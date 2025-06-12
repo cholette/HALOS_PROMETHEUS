@@ -250,7 +250,7 @@ class AimpointOptOutputs(object):
 
         self.new_obj = post_add_obj + self.obj_value
 
-    def printOutput(self, case_name, console = False):
+    def printOutput(self, case_name, console = False, output_folder="./../outputs/"):
         """
         Write/print outputs as CSV
 
@@ -266,7 +266,10 @@ class AimpointOptOutputs(object):
         None. Writes CSV & prints outputs on Console 
 
         """
-        ofile = open(case_name+"_solution.csv",'w')
+        if output_folder[-1] != "/":
+            output_folder += "/"
+
+        ofile = open(output_folder+case_name+"_solution.csv",'w')
         ofile.write("obj_value: "+str(self.obj_value)+"\n\n")
         if self.new_obj != 0:
             ofile.write("new_obj: "+str(self.new_obj)+"\n\n")
@@ -283,7 +286,7 @@ class AimpointOptOutputs(object):
             for h in range(len(self.aimpoint_select_map)):
                 print("aim heliostat ",h," at aimpoint ",self.aimpoint_select_map[h])
             print("obj value: ",self.obj_value)
-        ofile2 = open(case_name+"_utilization.csv","w")
+        ofile2 = open(output_folder+case_name+"_utilization.csv","w")
         for i in range(len(self.utilization_by_section)):
             ofile2.write(str(self.utilization_by_section[i])+",")
         ofile2.write("\n")

@@ -92,11 +92,11 @@ if __name__ == "__main__":
     if not load_data:
         kwargs = inputs.readCaseFile(case_filename)
         flux_dict = sp_flux.single_helio_flux_dict(kwargs, aim_method='Image size priority')
-        with open(field_flux_dict_file, 'wb') as f:
+        with open("./../inputs/"+field_flux_dict_file, 'wb') as f:
             pickle.dump(flux_dict, f)
     else:
         print("Loading heliostat data in from pickle...")
-        with open(field_flux_dict_file, 'rb') as f:
+        with open("./../inputs/"+field_flux_dict_file, 'rb') as f:
             flux_dict = pickle.load(f)
 
     # Checking for zero contributions heliostats
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     flux_before_defocus = np.array(comb_flux)
     if True:   ##Get Flux Limits from CSV
         import csv
-        with open('flux_limits.csv', 'r') as data:
+        with open('./../inputs/flux_limits.csv', 'r') as data:
             reader = csv.reader(data)
             next(data)
             flux_limit = []

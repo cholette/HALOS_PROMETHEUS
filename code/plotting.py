@@ -194,6 +194,7 @@ def plot_optimal_flux_heatmap(outputs, fname, save_csv = True):
     if save_csv:
         np.savetxt("./../outputs/"+fname+"_values.csv", flux, delimiter = ",")
                   
+    plt.imshow(flux,cmap="hot",aspect='auto', extent=(-plot_width/2, plot_width/2, 0, plot_height))
     plt.colorbar()
     plt.ylabel('Receiver vertical position [m]')
     if outputs.flux_model.receiver.params['receiver_type'] == 'Flat plate':

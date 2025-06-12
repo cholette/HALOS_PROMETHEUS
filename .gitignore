@@ -1,0 +1,14 @@
+*\copylot.py
+*.dll
+*__pycache__
+outputs/
+.venv/
+tmp/
+.vscode/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+*results/
+data/
+notes/
+inputs/

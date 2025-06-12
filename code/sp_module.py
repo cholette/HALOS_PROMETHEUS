@@ -387,7 +387,7 @@ class SP_Flux(SolarPilot):
         cp.data_free(self.r)
         return flux, num_defocus, num_heliostats
     
-    def sp_aimpoint_defocus(self, weather_data = None, hour_id = None, dni = None):
+    def sp_aimpoint_defocus(self, weather_data = None, hour_id = None, dni = None,input_folder = "./../inputs/"):
         """
         Aimpoint heuristics using SolarPILOT flux calculations. Defocuses 
         Heliostats to avoid flux violations. 
@@ -404,16 +404,20 @@ class SP_Flux(SolarPilot):
         """
         import sp_aimpoint_heuristic as sp_aim
         import pickle
+
+        # ensure input folder ends with a slash
+        if input_folder[-1] != "/":
+            input_folder += "/"
         
         field_flux_dict_file = "field_flux_image_priority.pkl"
         load_data = False
         if not load_data:
             flux_dict = self.get_single_helio_flux_dict(aim_method='Image size priority', weather_data=weather_data, hour_id=hour_id, dni=dni)
-            with open(field_flux_dict_file, 'wb') as f:
+            with open(input_folder+field_flux_dict_file, 'wb') as f:
                 pickle.dump(flux_dict, f)
         else:
             print("Loading heliostat data in from pickle...")
-            with open(field_flux_dict_file, 'rb') as f:
+            with open(input_folder+field_flux_dict_file, 'rb') as f:
                 flux_dict = pickle.load(f)
     
         # Checking for zero contributions heliostats
@@ -426,9 +430,9 @@ class SP_Flux(SolarPilot):
         for key in flux_dict.keys():
             comb_flux += numpy.array(flux_dict[key])
         flux_before_defocus = numpy.array(comb_flux)
-        if True:   ##Get Flux Limits from CSV
+        if not load_data:   ##Get Flux Limits from CSV
             import csv
-            with open('flux_limits.csv', 'r') as data:
+            with open(input_folder+'flux_limits.csv', 'r') as data:
                 reader = csv.reader(data)
                 next(data)
                 flux_limit = []
@@ -449,7 +453,7 @@ class SP_Flux(SolarPilot):
         return flux_before_defocus, flux_after_defocus, defocused_helios       
     
     def run_sp_case(self, weather_data = None, case_name = None, hour_id = None, dni = None, 
-                    sp_aimpoint_heur = False, saveCSV = True):
+                    sp_aimpoint_heur = False, saveCSV = True,ouput_folder = "./../outputs/"):
         """
         Run full field SolarPilot Case with or without aimpoint heuristic
 
@@ -495,7 +499,7 @@ class SP_Flux(SolarPilot):
             results["post_num_defocus"] = defocused_helios
         if saveCSV:
             results_filename = "SolarPilot_" + case_name +"_summary.csv"
-            with open(results_filename, "w") as f:  
+            with open(ouput_folder+results_filename, "w") as f:  
                 w = csv.DictWriter(f, results.keys())
                 w.writeheader()
                 w.writerow(results) 
