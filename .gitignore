@@ -1,6 +1,6 @@
 *\copylot.py
 *.dll
-*__pycache__
+*__pycache__*
 outputs/
 .venv/
 tmp/

@@ -43,7 +43,7 @@ class SolarPilot:
                self.receiver_data[line[0]] = line[1]
                
     def assign_inputs(self, weather_data = None, hour_id = None, dni = None, 
-                      not_filter_helio = False, center_aimpoint = True, read_weather = False):
+                      not_filter_helio = False, aimpoint_method = None, read_weather = False):
         """
         Creates solarpilot data pointer and assigns the inputs through data pointer 
 
@@ -82,6 +82,9 @@ class SolarPilot:
         ##Mirror Parameters - (Heliostats) 
         cp.data_set_number(self.r, "heliostat.0.height", float(self.receiver_data["mirror_ht"]))
         cp.data_set_number(self.r, "heliostat.0.width", float(self.receiver_data["mirror_len"]))
+        cp.data_set_number(self.r, "heliostat.0.reflectivity", float(self.receiver_data["nominal_reflectivity"]))
+        cp.data_set_number(self.r, "heliostat.0.soiling", 1.0) # set mirrors to perfeclty clean by default
+        
         ##Receiver Parameters:
         ## ZENITH DEF: Zenith Angle is measured relative to earth's normal (Z-Axis). (0 to 180) deg
         ## Elevation DEF: Elevation is measured relative to the XY plane. Has positive value towards upwards. (90 to -90) deg
@@ -121,8 +124,8 @@ class SolarPilot:
         cp.data_set_string(self.r, "ambient.0.weather_file", self.filenames["weather_filename"]) 
         if not_filter_helio is True:
             cp.data_set_string( self.r, "solarfield.0.des_sim_detail", "Do not filter heliostats" )
-        if center_aimpoint is True:
-            cp.data_set_string(self.r, "fluxsim.0.aim_method", "Simple aim points")
+        if aimpoint_method is not None:
+            cp.data_set_string(self.r, "fluxsim.0.aim_method", aimpoint_method)
         
     def plot_field(self, field, name = None):
         x = field["x_location"].values.flatten()
@@ -279,36 +282,35 @@ class SP_Flux(SolarPilot):
         for h in range(self.num_heliostats):
             helio = coords[h].tolist()
             self.helio_data.append(helio)
-                
-    def get_single_helio_flux(self, helio_index, weather_data = None, hour_id = None, dni = None):
-        """
-        Returns Flux image/map of a single Heliostat 
 
-        Parameters
-        ----------
-        helio_index : Heliostat ID
-        weather_data : Dataframe, Required if simulating specific hour
-             
-        hour_id : 
-            DESCRIPTION. Hour Number
-        dni : 
-            DESCRIPTION. Flux simulation dni
+    def set_helio_aimpoints(self,aimpoints:list[list]):
+        nan = float('nan')
+        for ii,h in enumerate(self.helio_data):
+            self.helio_data[ii] = [h[0],h[1],h[2],h[3],
+                                   nan,nan,nan,nan,nan,
+                                   aimpoints[ii][0],aimpoints[ii][1],aimpoints[ii][2]]
 
-        Returns
-        -------
-        flux : Array
-            Flux image of a single Heliostat
+    def get_single_helio_flux(self, helio_index, weather_data = None, 
+                              hour_id = None, dni = None, soiling:list = None):
+        
+        self.assign_inputs(weather_data, hour_id, dni,not_filter_helio=True)
+        cp.data_set_string(self.r, "fluxsim.0.aim_method", "Simple aim points")
+        cp.assign_layout(self.r, self.helio_data)
+        res = cp.detail_results(self.r)
 
-        """
-        self.assign_inputs(weather_data, hour_id, dni)
-        #Assiging layout and starting flux simulation
-        h = []
-        h.append(self.helio_data[helio_index])
-        cp.assign_layout(self.r, h)                                                 
-        field = cp.get_layout_info(self.r)                                         
-        cp.simulate(self.r, nthreads = 8)                                                     
-        flux = cp.get_fluxmap(self.r)
-        cp.data_free(self.r)
+        helio_dict = {}
+        helio_dict['id'] = res['id'].tolist()
+        helio_dict['enabled'] = [1]*len(res['id']) # Start with all heliostats on
+        helio_dict['reflectivity'] = [0]*len(res['id']) # Setting the reflectivity of the heliostats to 0
+        helio_dict['reflectivity'][helio_index] = float(self.receiver_data['nominal_reflectivity']) # ... except for the heliostat of interest, which we set to perfectly clean
+        if soiling is not None:
+            helio_dict['soiling'][helio_index] = soiling[helio_index]
+
+        assert cp.modify_heliostats(self.r, helio_dict)
+        assert cp.simulate(self.r)
+        flux = cp.get_fluxmap(self.r) 
+        cp.data_free(self.r) 
+
         return flux
     
     def get_single_helio_flux_dict(self,aim_method = 'Simple aim points', weather_data = None, hour_id = None, dni = None):
@@ -360,7 +362,8 @@ class SP_Flux(SolarPilot):
         return flux_dict
     
     def get_full_field_flux(self, weather_data = None, case_name = None, hour_id = None, dni = None, 
-                            not_filter_helio = False, center_aimpoint = False):
+                            not_filter_helio = True, aimpoint_method = None, aimpoints:list[list] = None,
+                            soiling:list = None):
         """
         Returns full field flux map
         
@@ -374,17 +377,57 @@ class SP_Flux(SolarPilot):
             Total number Heliostats in the field
 
         """
-        self.assign_inputs(weather_data, hour_id, dni, not_filter_helio, center_aimpoint, read_weather=True)
-        cp.assign_layout(self.r, self.helio_data)
+        
+        self.assign_inputs(weather_data, hour_id, dni, not_filter_helio, aimpoint_method, read_weather=True)
+        assert cp.assign_layout(self.r, self.helio_data)
+        if aimpoints is not None:
+            assert aimpoint_method is None, "Cannot set aimpoints and aim_method at the same time. Set one to None"
+            print("Overwriting aimpoint strategy to use user defined aimpoints")
+            self.set_helio_aimpoints(aimpoints)
+            cp.data_set_string(self.r, "fluxsim.0.aim_method", "Keep existing")
+        
+        else:
+            res = cp.detail_results(self.r) # Get the aimpoints from the field
+        
+        # set reflectivity and soiling
+        helio_dict = {'id': [], 'enabled': [], 'reflectivity': [],
+                      'location-x': [], 'location-y': [], 'location-z': [],
+                      'aimpoint-x': [], 'aimpoint-y': [], 'aimpoint-z': [],
+                      'soiling': []}
+        for ii,h in enumerate(self.helio_data):
+            helio_dict['id'] += [ii]
+            helio_dict['enabled'] += [1]
+            helio_dict['location-x'] += [h[1]]
+            helio_dict['location-y'] += [h[2]]
+            helio_dict['location-z'] += [h[3]]
+            if aimpoints is not None:
+                helio_dict['aimpoint-x'] += [h[-3]]
+                helio_dict['aimpoint-y'] += [h[-2]]
+                helio_dict['aimpoint-z'] += [h[-1]]
+            else:
+                helio_dict['aimpoint-x'] += [res['x_aimpoint'][ii]]
+                helio_dict['aimpoint-y'] += [res['y_aimpoint'][ii]]
+                helio_dict['aimpoint-z'] += [res['z_aimpoint'][ii]]
+
+            helio_dict['reflectivity'] += [float(self.receiver_data['nominal_reflectivity'])]
+            if soiling is not None:
+                helio_dict['soiling'] += [soiling[ii]]
+            else:
+                helio_dict['soiling'] += [1.0]
+
+        
+        assert cp.modify_heliostats(self.r, helio_dict)
+
         cp.simulate(self.r, nthreads = 8)                                                             
         flux = cp.get_fluxmap(self.r)                                                
         field = cp.get_layout_info(self.r)  
         num_defocus = self.num_heliostats - len(field) - 1
         num_heliostats = len(field)
-        res1 = cp.summary_results(self.r, save_dict=True)
+        # res1 = cp.summary_results(self.r, save_dict=True)
         self.df_field = cp.detail_results(self.r) 
         self.full_field_flux = flux
         cp.data_free(self.r)
+
         return flux, num_defocus, num_heliostats
     
     def sp_aimpoint_defocus(self, weather_data = None, hour_id = None, dni = None,input_folder = "./../inputs/"):
@@ -453,7 +496,8 @@ class SP_Flux(SolarPilot):
         return flux_before_defocus, flux_after_defocus, defocused_helios       
     
     def run_sp_case(self, weather_data = None, case_name = None, hour_id = None, dni = None, 
-                    sp_aimpoint_heur = False, saveCSV = True,ouput_folder = "./../outputs/"):
+                    sp_aimpoint_heur = False, saveCSV = True,ouput_folder = "./../outputs/",
+                    aimpoints = None, soiling = None, aimpoint_method = None):
         """
         Run full field SolarPilot Case with or without aimpoint heuristic
 
@@ -480,7 +524,13 @@ class SP_Flux(SolarPilot):
             area_m_point = (float(self.receiver_data["height"])/float (self.receiver_data["pts_per_dim"])) * (float(self.receiver_data["length"])/float(self.receiver_data["pts_per_dim"]))
         if self.receiver_data["receiver_type"] == 'External cylindrical':
             area_m_point = ((((float(self.receiver_data["diameter"])) * (numpy.pi))/(float (self.receiver_data["pts_per_dim"]))) * ((float(self.receiver_data["height"]) / (float(self.receiver_data["pts_per_dim"])))))
-        flux, num_defocus, num_heliostats = self.get_full_field_flux(weather_data=weather_data, case_name=case_name, hour_id=hour_id)
+        
+        flux, num_defocus, num_heliostats = self.get_full_field_flux(weather_data=weather_data, case_name=case_name, 
+                                                                     hour_id=hour_id,
+                                                                     aimpoints=aimpoints,
+                                                                     soiling=soiling,
+                                                                     aimpoint_method=aimpoint_method)
+        
         flux_with_area = numpy.array(flux) * area_m_point
         obj_value = numpy.sum(flux_with_area)
         max_flux = numpy.max(flux)
@@ -503,7 +553,7 @@ class SP_Flux(SolarPilot):
                 w = csv.DictWriter(f, results.keys())
                 w.writeheader()
                 w.writerow(results) 
-        
+
         if case_name is not None:
             plt.figure(1)
             self.plot_flux_map(flux, name = ("SolarPilot_Flux_map_" + case_name))

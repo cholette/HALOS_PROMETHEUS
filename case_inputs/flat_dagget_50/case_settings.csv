@@ -4,4 +4,4 @@ num_sections,8
 section_method,angle
 use_sp_flux,1
 hour_idx,4644
-use_sp_field,1
+use_sp_field,0

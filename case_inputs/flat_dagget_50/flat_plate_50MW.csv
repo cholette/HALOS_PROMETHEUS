@@ -22,3 +22,4 @@ mirror_area,148.84
 flux_ub,600
 flux_lb,0
 n_circulation,0
+nominal_reflectivity,0.95

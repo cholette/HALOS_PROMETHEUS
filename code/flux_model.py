@@ -80,7 +80,7 @@ class FluxModel(object):
         self.mirror_shape = mirror_shape
         self.receiver = receiver
         self.flux_method = flux_method
-        self.weather_data = ReadWeatherFile(weather_file)
+        self.weather_data = ReadWeatherFile(weather_file,get_angles=True)
         self.field = field
         self.filenames = filenames
         self.hour_id = hour_id
@@ -149,7 +149,8 @@ class FluxModel(object):
                 for mcol in range(len(self.receiver.x[mrow])):
                     norm_idx = mrow*len(self.receiver.x[mrow]) + mcol
                     measurement = numpy.array([self.receiver.x[mrow,mcol],self.receiver.y[mrow,mcol],self.receiver.z[mrow,mcol]])
-                    flux_map[mrow,mcol] += self.flux_method.GetFlux(helio,aim,measurement,self.receiver.normals[norm_idx],solar_vector,self.dni,approx,center_aim)
+                    flux_map[mrow,mcol] += self.flux_method.GetFlux(helio,aim,measurement,self.receiver.normals[norm_idx],
+                                                                    solar_vector,self.dni,approx,center_aim)
             return flux_map
 
 
@@ -283,8 +284,7 @@ class FluxModel(object):
         print("Parallel Flux Calculation - Done!")
         del(p)
 
-
-    def ShiftImage_GenerateSingleHeliostatFluxMaps(self,helio_idx,solar_vector,approx=True):
+    def ShiftImage_GenerateSingleHeliostatFluxMaps(self,helio_idx):
         """
         Given the heliostat, a solar vector, dni, and an efficiency map, 
         generates a flux map of the receiver for each aimpoint-measurement 
