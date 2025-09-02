@@ -20,6 +20,8 @@ def centroid(flux):
     
 case_filename = "./../case_inputs/flat_50_ca_case.csv"
 case_name = "flat_daggett_50"
+use_soltrace = True
+simulate_soiling = True
 filenames = inputs.readCaseFile(case_filename)
 settings = inputs.readSettingsFile(filenames["settings"])
 N = pd.read_csv(filenames['field_filename']).shape[0]
@@ -29,8 +31,9 @@ fsz = (16,6.75)
 if __name__ == "__main__":
     # Set soiling factor (equivalent to instantaneous cleanliness, 1.0 = perfectly clean)
     soiling = [1.0]*N
-    for ii in range(200,500):
-        soiling[ii] = 0.75  # Example soiling condition for the first heliostat
+    if simulate_soiling:
+        for ii in range(200,500):
+            soiling[ii] = 0.75  # Example soiling condition for the first heliostat
 
      # HALOS
     halos_flux_model = inputs.getFullFluxModelFromFiles(case_filename,settings['hour_idx'])
@@ -51,12 +54,13 @@ if __name__ == "__main__":
     possible_aimpoints = halos_flux_model.receiver.aimpoints
     N_aim = possible_aimpoints.shape[0]
     for i in range(N):
-        idx = N_aim // 2  # Use the center aimpoint
-        # idx = np.random.randint(0,N_aim)
-        # if np.random.rand() < 0.5:
-        #     idx = 8
-        # else:
-        #     idx = 40
+        # idx = N_aim // 2  # Use the center aimpoint
+        idx = np.random.randint(0,N_aim)
+
+        if np.random.rand() < 0.5:
+            idx = 8
+        else:
+            idx = 40
 
         aimpoint_idx.append(idx)
         apx = -possible_aimpoints[idx,0]
@@ -69,39 +73,62 @@ if __name__ == "__main__":
     for ii in range(N):
         flux_halos += all_maps[ii][aimpoint_idx[ii]].reshape(meas_grid_shape)*soiling[ii]
     
-    # %% SolarPilot
-    sp_flux = sp_module.SP_Flux(filenames,use_sp_field=False)
-    outputs = sp_flux.run_sp_case(  case_name=case_name,
+    # %% SolarPilot (Hermite)
+    sp_flux_sp = sp_module.SP_Flux(filenames,use_sp_field=False)
+    outputs = sp_flux_sp.run_sp_case(  case_name=case_name,
+                                        sp_aimpoint_heur = False, 
+                                        saveCSV = True,
+                                        hour_id = settings["hour_idx"], 
+                                        weather_data = filenames["weather_filename"],
+                                        aimpoints=aimpoints,
+                                        soiling=soiling,
+                                        aimpoint_method=None,
+                                        use_soltrace=False)
+    
+    flux_sp = np.array(sp_flux_sp.full_field_flux)
+    width,height = float(sp_flux_sp.receiver_data['length']), float(sp_flux_sp.receiver_data['height'])
+    tower_height = float(sp_flux_sp.receiver_data['tow_height'])   
+
+    # %% SolarPilot (SolTrace)
+    sp_flux_st = sp_module.SP_Flux(filenames,use_sp_field=False)
+    outputs = sp_flux_st.run_sp_case(  case_name=case_name,
                                     sp_aimpoint_heur = False, 
                                     saveCSV = True,
                                     hour_id = settings["hour_idx"], 
                                     weather_data = filenames["weather_filename"],
                                     aimpoints=aimpoints,
                                     soiling=soiling,
-                                    aimpoint_method=None)
+                                    aimpoint_method=None,
+                                    use_soltrace=use_soltrace,
+                                    max_rays = 10000000,
+                                    min_rays = 100000)
     
-    flux_sp = np.array(sp_flux.full_field_flux)
-    width,height = float(sp_flux.receiver_data['length']), float(sp_flux.receiver_data['height'])
-    tower_height = float(sp_flux.receiver_data['tow_height'])   
-
-   
+    flux_st = np.array(sp_flux_st.full_field_flux)
+       
     # %% Comparision plots
+    stc = centroid(flux_st)
     spc = centroid(flux_sp)
     halc = centroid(flux_halos)
 
     extent = (-width/2, width/2, -height/2, height/2)
     # Flux maps
-    fig,ax = plt.subplots(ncols=2,figsize=fsz)
+    fig,ax = plt.subplots(ncols=3,figsize=fsz)
+
     im1 = ax[0].imshow(flux_sp,aspect = 'auto', extent = extent)
-    ax[0].scatter(spc[0]*width, -spc[1]*height, color='red', label='SolarPilot Centroid', marker='x')
-    im2 = ax[1].imshow(flux_halos,aspect = 'auto', extent = extent)
-    ax[1].scatter(halc[0]*width, -halc[1]*height, color='blue', label='HALOS Centroid', marker='x')
-    
+    ax[0].scatter(spc[0]*width, -spc[1]*height, color='red', label='SolarPilot Centroid ', marker='x')
     ax[0].set_xlabel('horizontal position (m)')
+    ax[0].set_title('SolarPilot Flux Map (Hermite)')
+    
+    
+    im2 = ax[1].imshow(flux_st,aspect = 'auto', extent = extent)
+    ax[1].scatter(stc[0]*width, -stc[1]*height, color='red', label='SolTrace Centroid', marker='x')
     ax[1].set_xlabel('horizontal position (m)')
-    ax[0].set_ylabel('vertical position (m)')
-    ax[0].set_title('SolarPilot Flux Map')
-    ax[1].set_title('HALOS Flux Map')
+    ax[1].set_title('SolarPilot Flux Map (SolTrace)')
+
+    im3 = ax[2].imshow(flux_halos,aspect = 'auto', extent = extent)
+    ax[2].scatter(halc[0]*width, -halc[1]*height, color='blue', label='HALOS Centroid', marker='x')
+    ax[2].set_xlabel('horizontal position (m)')        
+    ax[2].set_title('HALOS Flux Map')
 
     cbar = fig.colorbar(im1, ax=ax, orientation='vertical')
     cbar.set_label('Flux (kW/m²)')
@@ -109,29 +136,48 @@ if __name__ == "__main__":
 
     # Error maps
     exclude = 10
-    fig2,ax2 = plt.subplots(ncols=2,figsize=fsz)
-    abs_err = np.abs(flux_halos-flux_sp)
-    rel_err = np.abs(flux_halos-flux_sp)/np.abs(flux_sp)*100
-    rel_err[flux_sp<exclude] = np.nan  # Avoid division by zero
+    fig2,ax2 = plt.subplots(ncols=3,figsize=fsz)
+    abs_err_sp = flux_halos-flux_sp
+    abs_err_st = flux_halos-flux_st
+    # rel_err = np.abs(flux_halos-flux_sp)/np.abs(flux_sp)*100
+    # rel_err[flux_sp<exclude] = np.nan  # Avoid division by zero
     
-    im3 = ax2[0].imshow(abs_err,aspect = 'auto', 
-                        extent = extent,
-                        vmin=0,vmax=None)
+    # get value range to ensure colormap is the same
+    vmin = min(abs_err_sp.min(),abs_err_st.min())
+    vmax = max(abs_err_sp.max(),abs_err_st.max())
 
-    im4 = ax2[1].imshow(rel_err,aspect = 'auto', 
+    im4 = ax2[0].imshow(abs_err_sp,aspect = 'auto', 
                         extent = extent,
-                        vmin=0,vmax=25)
+                        vmin=vmin,vmax=vmax)
+
+    im5 = ax2[1].imshow(abs_err_st,aspect = 'auto', 
+                        extent = extent,
+                        vmin=vmin,vmax=vmax)
+    
+    im6 = ax2[2].imshow(flux_sp-flux_st,aspect = 'auto', 
+                        extent = extent,
+                        vmin=vmin,vmax=vmax)
     
     ax2[0].set_xlabel('horizontal position (m)')
     ax2[0].set_ylabel('vertical position (m)')
-    ax2[0].set_title('Absolute Error = |HALOS -SolarPilot|\n')
-    cbar2 = fig2.colorbar(im3, orientation='vertical')
-    cbar2.set_label('Flux (kW/m²)')
+    ax2[0].set_title('error = HALOS -SolarPilot\n')
+    # cbar2 = fig2.colorbar(im4, orientation='vertical')
+    # cbar2.set_label('Flux (kW/m²)')
 
     ax2[1].set_xlabel('horizontal position (m)')
-    ax2[1].set_title(f'Relative Error = |HALOS-SolarPilot|/|SolarPilot|\n(Flux<{exclude} kW/m^2 excluded)')
-    cbar3 = fig2.colorbar(im4, orientation='vertical')
-    cbar3.set_label('Error (%)')
+    ax2[1].set_title('error = HALOS -SolTrace \n')
+    # ax2[1].set_title(f'Relative Error = |HALOS-SolarPilot|/|SolarPilot|\n(Flux<{exclude} kW/m^2 excluded)')
+    # cbar3 = fig2.colorbar(im4, orientation='vertical')
+    # cbar3.set_label('Error (%)')
+
+    ax2[2].set_xlabel('horizontal position (m)')
+    ax2[2].set_title('error = SolarPILOT - SolTrace \n')
+    
+
+    cbar3 = fig.colorbar(im4, ax=ax2, orientation='vertical')
+    cbar3.set_label('Flux Error (kW/m²)')
     plt.show()
     
 
+
+# %%

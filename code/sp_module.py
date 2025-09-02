@@ -363,7 +363,8 @@ class SP_Flux(SolarPilot):
     
     def get_full_field_flux(self, weather_data = None, case_name = None, hour_id = None, dni = None, 
                             not_filter_helio = True, aimpoint_method = None, aimpoints:list[list] = None,
-                            soiling:list = None):
+                            soiling:list = None, use_soltrace = False,
+                            max_rays=None,min_rays=None):
         """
         Returns full field flux map
         
@@ -388,6 +389,20 @@ class SP_Flux(SolarPilot):
         
         else:
             res = cp.detail_results(self.r) # Get the aimpoints from the field
+
+        
+        if use_soltrace:
+            cp.data_set_string(self.r,"fluxsim.0.flux_model","SolTrace")
+            if max_rays is not None:
+                cp.data_set_number(self.r,"fluxsim.0.max_rays",max_rays)
+            if min_rays is not None:
+                cp.data_set_number(self.r,"fluxsim.0.min_rays",min_rays)
+            
+            maxr,minr = cp.data_get_number(self.r,"fluxsim.0.max_rays"),cp.data_get_number(self.r,"fluxsim.0.min_rays")
+            print(f"Using SolTrace with Desired intersections = {minr:.2f} and Max Rays = {maxr:.2f}")
+            
+        else:
+            cp.data_set_string(self.r,"fluxsim.0.flux_model","Hermite (analytical)")
         
         # set reflectivity and soiling
         helio_dict = {'id': [], 'enabled': [], 'reflectivity': [],
@@ -497,7 +512,8 @@ class SP_Flux(SolarPilot):
     
     def run_sp_case(self, weather_data = None, case_name = None, hour_id = None, dni = None, 
                     sp_aimpoint_heur = False, saveCSV = True,ouput_folder = "./../outputs/",
-                    aimpoints = None, soiling = None, aimpoint_method = None):
+                    aimpoints = None, soiling = None, aimpoint_method = None,
+                    use_soltrace=False,max_rays=None,min_rays=None):
         """
         Run full field SolarPilot Case with or without aimpoint heuristic
 
@@ -519,7 +535,7 @@ class SP_Flux(SolarPilot):
             after defocused obj_value. 
 
         """
-        
+
         if self.receiver_data["receiver_type"] == 'Flat plate':
             area_m_point = (float(self.receiver_data["height"])/float (self.receiver_data["pts_per_dim"])) * (float(self.receiver_data["length"])/float(self.receiver_data["pts_per_dim"]))
         if self.receiver_data["receiver_type"] == 'External cylindrical':
@@ -529,7 +545,10 @@ class SP_Flux(SolarPilot):
                                                                      hour_id=hour_id,
                                                                      aimpoints=aimpoints,
                                                                      soiling=soiling,
-                                                                     aimpoint_method=aimpoint_method)
+                                                                     aimpoint_method=aimpoint_method,
+                                                                     use_soltrace=use_soltrace,
+                                                                     max_rays=max_rays,
+                                                                     min_rays=min_rays)
         
         flux_with_area = numpy.array(flux) * area_m_point
         obj_value = numpy.sum(flux_with_area)
