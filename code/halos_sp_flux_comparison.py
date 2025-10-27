@@ -2,11 +2,10 @@
 """ Flux testing script for case studies as a part of the 2025 Q2 milesone
     for PROMETHEUS project. """
 
-import inputs
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import sp_module
+from tqdm import tqdm
 
 def centroid(flux):
     y, x = np.indices(flux.shape)
@@ -17,81 +16,57 @@ def centroid(flux):
     y_centroid = (y_centroid - y.mean())/(y.max() - y.min())
     return x_centroid, y_centroid
 
+def flux_models(case_filename):
+    import inputs 
+    import sp_module
+
+    filenames = inputs.readCaseFile(case_filename)
+    settings = inputs.readSettingsFile(filenames["settings"])
+    N = pd.read_csv(filenames['field_filename']).shape[0]       
+
+    # getting flux model from files
+    halos = inputs.getFullFluxModelFromFiles(case_filename,settings['hour_idx'])
     
-case_filename = "./../case_inputs/flat_50_ca_case.csv"
-case_name = "flat_daggett_50"
-use_soltrace = True
-simulate_soiling = True
-filenames = inputs.readCaseFile(case_filename)
-settings = inputs.readSettingsFile(filenames["settings"])
-N = pd.read_csv(filenames['field_filename']).shape[0]
-tower_height = float(pd.read_csv(filenames['receiver_filename'],index_col=0,names=['name','value']).loc['tow_height'].value)
-fsz = (16,6.75)
+    # shifted flux maps 
+    all_maps = []
+    for h in tqdm(range(N)): 
+        all_maps += [halos.ShiftImage_GenerateSingleHeliostatFluxMaps(h)]
 
-if __name__ == "__main__":
-    # Set soiling factor (equivalent to instantaneous cleanliness, 1.0 = perfectly clean)
-    soiling = [1.0]*N
-    if simulate_soiling:
-        for ii in range(200,500):
-            soiling[ii] = 0.75  # Example soiling condition for the first heliostat
+    # SolarPilot (Hermite)   
+    solarpilot_flux = sp_module.SP_Flux(filenames,use_sp_field=False) # solar pilot
+    
 
-     # HALOS
-    halos_flux_model = inputs.getFullFluxModelFromFiles(case_filename,settings['hour_idx'])
-    central_fluxes = halos_flux_model.parallel_flux_maps
+    # SolarPilot (SolTrace)
+    st = sp_module.SP_Flux(filenames,use_sp_field=False) # soltrace
+    
+    
+    models = {'solarpilot':solarpilot_flux,'soltrace':st,'halos':halos}
+    params = {'settings':settings,'filenames':filenames}
+    return models,all_maps,params
+
+def get_fluxes(models,all_maps,params,aimpoints,soiling):
+
+    settings = params['settings']
+    filenames = params['filenames']
+    central_fluxes = models['halos'].parallel_flux_maps
     meas_grid_shape = central_fluxes[0].shape
-
-    ## Central flux from HALOS
-    # flux_halos = np.zeros(central_fluxes[0].shape)
-    # for key,item in central_fluxes.items():
-    #     flux_halos += item
-
-    # shifted flux maps  
-    all_maps = [halos_flux_model.ShiftImage_GenerateSingleHeliostatFluxMaps(h) for h in range(N)]
-
-    # Set aimpoints for both HALOS and SolarPILOT
-    aimpoint_idx = []
-    aimpoints = []
-    possible_aimpoints = halos_flux_model.receiver.aimpoints
-    N_aim = possible_aimpoints.shape[0]
-    for i in range(N):
-        # idx = N_aim // 2  # Use the center aimpoint
-        idx = np.random.randint(0,N_aim)
-
-        if np.random.rand() < 0.5:
-            idx = 8
-        else:
-            idx = 40
-
-        aimpoint_idx.append(idx)
-        apx = -possible_aimpoints[idx,0]
-        apy = possible_aimpoints[idx,1]
-        apz = possible_aimpoints[idx,2]
-        apz = 2.0*tower_height-apz 
-        aimpoints.append([apx,apy,apz])
-    
     flux_halos = np.zeros(meas_grid_shape)
     for ii in range(N):
         flux_halos += all_maps[ii][aimpoint_idx[ii]].reshape(meas_grid_shape)*soiling[ii]
-    
-    # %% SolarPilot (Hermite)
-    sp_flux_sp = sp_module.SP_Flux(filenames,use_sp_field=False)
-    outputs = sp_flux_sp.run_sp_case(  case_name=case_name,
-                                        sp_aimpoint_heur = False, 
-                                        saveCSV = True,
-                                        hour_id = settings["hour_idx"], 
-                                        weather_data = filenames["weather_filename"],
-                                        aimpoints=aimpoints,
-                                        soiling=soiling,
-                                        aimpoint_method=None,
-                                        use_soltrace=False)
-    
-    flux_sp = np.array(sp_flux_sp.full_field_flux)
-    width,height = float(sp_flux_sp.receiver_data['length']), float(sp_flux_sp.receiver_data['height'])
-    tower_height = float(sp_flux_sp.receiver_data['tow_height'])   
 
-    # %% SolarPilot (SolTrace)
-    sp_flux_st = sp_module.SP_Flux(filenames,use_sp_field=False)
-    outputs = sp_flux_st.run_sp_case(  case_name=case_name,
+    outputs_sp = models['solarpilot'].run_sp_case(   case_name=case_name,
+                                                sp_aimpoint_heur = False, 
+                                                saveCSV = True,
+                                                hour_id = settings["hour_idx"], 
+                                                weather_data = filenames["weather_filename"],
+                                                aimpoints=aimpoints,
+                                                soiling=soiling,
+                                                aimpoint_method=None,
+                                                use_soltrace=False)
+    
+    flux_sp = np.array(models['solarpilot'].full_field_flux)
+
+    outputs_st = models['soltrace'].run_sp_case(  case_name=case_name,
                                     sp_aimpoint_heur = False, 
                                     saveCSV = True,
                                     hour_id = settings["hour_idx"], 
@@ -100,12 +75,30 @@ if __name__ == "__main__":
                                     soiling=soiling,
                                     aimpoint_method=None,
                                     use_soltrace=use_soltrace,
-                                    max_rays = 10000000,
-                                    min_rays = 100000)
+                                    max_rays = 100000000,
+                                    min_rays = 1000000)
     
-    flux_st = np.array(sp_flux_st.full_field_flux)
+    flux_st = np.array(models['soltrace'].full_field_flux)
+
+    fluxes = {'solarpilot':flux_sp,'soltrace':flux_st,'halos':flux_halos}
+
+    return fluxes
+
+def compare_sp_and_halos(models,fluxes):
+     
+    flux_st = fluxes['soltrace']
+    flux_sp = fluxes['solarpilot']
+    flux_halos = fluxes['halos']
+    
+    st = models['soltrace']
+    sp = models['solarpilot']
+    halos = models['halos']
+
+
+    width,height = float(sp.receiver_data['length']), float(sp.receiver_data['height'])
+     
        
-    # %% Comparision plots
+    # Comparision plots
     stc = centroid(flux_st)
     spc = centroid(flux_sp)
     halc = centroid(flux_halos)
@@ -135,7 +128,6 @@ if __name__ == "__main__":
     plt.show()
 
     # Error maps
-    exclude = 10
     fig2,ax2 = plt.subplots(ncols=3,figsize=fsz)
     abs_err_sp = flux_halos-flux_sp
     abs_err_st = flux_halos-flux_st
@@ -161,14 +153,10 @@ if __name__ == "__main__":
     ax2[0].set_xlabel('horizontal position (m)')
     ax2[0].set_ylabel('vertical position (m)')
     ax2[0].set_title('error = HALOS -SolarPilot\n')
-    # cbar2 = fig2.colorbar(im4, orientation='vertical')
-    # cbar2.set_label('Flux (kW/m²)')
+    
 
     ax2[1].set_xlabel('horizontal position (m)')
     ax2[1].set_title('error = HALOS -SolTrace \n')
-    # ax2[1].set_title(f'Relative Error = |HALOS-SolarPilot|/|SolarPilot|\n(Flux<{exclude} kW/m^2 excluded)')
-    # cbar3 = fig2.colorbar(im4, orientation='vertical')
-    # cbar3.set_label('Error (%)')
 
     ax2[2].set_xlabel('horizontal position (m)')
     ax2[2].set_title('error = SolarPILOT - SolTrace \n')
@@ -176,8 +164,76 @@ if __name__ == "__main__":
 
     cbar3 = fig.colorbar(im4, ax=ax2, orientation='vertical')
     cbar3.set_label('Flux Error (kW/m²)')
-    plt.show()
-    
+    plt.show()    
 
+def optimize(models,all_maps):
+    from optimize_aimpoint_gurobi import gurobi_model
+    gm = gurobi_model(models['halos'],all_maps)
+    gm.model.setParam('MIPGap', 0.01)
+    gm.model.optimize()
+
+    N = len(all_maps)# number of heliostats
+    N_aim = len(all_maps[0]) # number of aimpoints
+    opt_aim = []
+    for ii in range(N):
+        jj = 0
+        while (jj < N_aim) and (len(opt_aim)<ii):
+            if gm.model.getVarByName(f'y[{ii},{jj}]'):
+                opt_aim.append(jj)
+
+    return gm
+
+# %% Main    
+if __name__ == "__main__":
+
+    case_filename = "./../case_inputs/flat_50_ca_case.csv"
+    case_name = "flat_daggett_50"
+    use_soltrace = False
+    simulate_soiling = False
+    fsz = (16,6.75)
+
+    models,all_maps,params = flux_models(case_filename)
+
+    # Set aimpoints for both HALOS and SolarPILOT
+    aimpoint_idx = []
+    aimpoints = []
+    possible_aimpoints = models['halos'].receiver.aimpoints
+    tower_height = float(models['solarpilot'].receiver_data['tow_height'])  
+    N = models['halos'].field.GetCoords().shape[0]
+    N_aim = possible_aimpoints.shape[0]
+    for i in range(N):
+        # idx = N_aim // 2  # Use the center aimpoint
+        idx = np.random.randint(0,N_aim)
+
+        if np.random.rand() < 0.5:
+            idx = 8
+        else:
+            idx = 40
+
+        aimpoint_idx.append(idx)
+        apx = -possible_aimpoints[idx,0]
+        apy = possible_aimpoints[idx,1]
+        apz = possible_aimpoints[idx,2]
+        apz = 2.0*tower_height-apz 
+        aimpoints.append([apx,apy,apz])
+    
+    # Set soiling factor (equivalent to instantaneous cleanliness, 1.0 = perfectly clean)
+    soiling = [1.0]*N
+    if simulate_soiling:
+        for ii in range(200,500):
+            soiling[ii] = 0.75  # Example soiling condition for the first heliostat
+ 
+    fluxes = get_fluxes(models,all_maps,params,aimpoints,soiling)
+    compare_sp_and_halos(models,fluxes)
+
+        
+    pk_hal,pk_sp, pk_st = fluxes['halos'].max(),fluxes['solarpilot'].max(),fluxes['soltrace'].max()
+    print(f'Peak fluxes: {pk_hal:.0f} (HALOS), {pk_sp:.0f} (SolarPILOT),{pk_st:.0f} (SolTrace)')
+
+    pts = int(models['solarpilot'].receiver_data['pts_per_dim'])
+    S = models['halos'].receiver.surface_area.reshape((pts,pts))
+    pw_hal,pw_sp,pw_st = np.sum(fluxes['halos']*S),np.sum(fluxes['solarpilot']*S),np.sum(fluxes['soltrace']*S)
+    print(f'Total Power: {pw_hal:.2f} (HALOS), {pw_sp:.2f} (SolarPILOT), {pw_st:.2f} (SolTrace)')
 
 # %%
+

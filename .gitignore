@@ -1,4 +1,4 @@
-*\copylot.py
+*/copylot.py
 *.dll
 *__pycache__*
 outputs/
@@ -12,3 +12,4 @@ tmp/
 data/
 notes/
 inputs/
+code/*__pycache__*
