@@ -45,10 +45,11 @@ def readParamFile(param_filename):
     reader = csv.reader(open(param_filename,'r'))
     for line in reader:    
         if len(line)>1:
-            if line[0] == "receiver_type":
-                d[line[0]] = line[1]
-            else:
+            try:
                 d[line[0]] = float(line[1])
+            except:
+                d[line[0]] = line[1]
+                
     return d
 
 def readSettingsFile(settings_filename):
@@ -139,8 +140,7 @@ def getReceiverFromFile(filenames,solar_field,folder="./../inputs/"):
     else:
         r.obj_by_point = numpy.ones_like(r.flux_upper_limits)
     return r
-    
-
+ 
 def getMirrorModelFromFile(filename,solar_field,settings):
     d = readParamFile(filename)
     if settings["mirror_model"] == "SinglePointGaussian":
