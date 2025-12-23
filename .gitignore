@@ -1,4 +1,5 @@
-*\copylot.py
+*/copylot.py
+*/pysoltrace.py
 *.dll
 *__pycache__*
 outputs/
@@ -12,3 +13,5 @@ tmp/
 data/
 notes/
 inputs/
+code/*__pycache__*
+*.pkl

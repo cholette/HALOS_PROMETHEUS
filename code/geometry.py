@@ -204,8 +204,7 @@ class Receiver:
 
     def generateAimpointsGrid(
             self, num_rows, num_cols, h_margin=0.,
-            v_margin=0, epsilon=1e-6
-    ):
+            v_margin=0, epsilon=1e-4):
         """
         Generates candidate aimpoints on the receiver surface. uses the
         measurement points on the surface.  The aimpoints are obtained
@@ -228,17 +227,23 @@ class Receiver:
         self.aim_x = np.zeros([num_rows, num_cols], dtype=float)
         self.aim_y = np.zeros_like(self.aim_x)
         self.aim_z = np.zeros_like(self.aim_x)
+
+        eff_rows = np.linspace(start=h_margin,stop=shape[0]-h_margin-1,num=num_rows)
+        eff_cols = np.linspace(start=v_margin,stop=shape[1]-v_margin-1,num=num_cols)
+
         for h in range(num_rows):
-            eff_row = h_margin + ((h + 0.5) * (shape[0] - 1 - 2 * h_margin) / num_rows)
+            eff_row = eff_rows[h]
             row_start = int(eff_row)
+
             for v in range(num_cols):
-                eff_col = v_margin + ((v + 0.5) * (shape[1] - 1 - 2 * v_margin) / num_cols)
+                eff_col = eff_cols[v]
                 col_start = int(eff_col)
+                
                 self.aim_x[h, v] = self.x[row_start, col_start]
                 self.aim_y[h, v] = self.y[row_start, col_start]
                 self.aim_z[h, v] = self.z[row_start, col_start]
-                if eff_col - col_start > 1e-4:
-                    if eff_row - row_start > 1e-4:
+                if eff_col - col_start > epsilon:
+                    if eff_row - row_start > epsilon:
                         # interpolate on row and column
                         p_row = eff_row - row_start
                         p_col = eff_col - col_start
@@ -254,7 +259,7 @@ class Receiver:
                         self.aim_x[h, v] += p_col * (self.x[row_start, col_start + 1] - self.x[row_start, col_start])
                         self.aim_y[h, v] += p_col * (self.y[row_start, col_start + 1] - self.y[row_start, col_start])
                         self.aim_z[h, v] += p_col * (self.z[row_start, col_start + 1] - self.z[row_start, col_start])
-                elif eff_row - row_start > 1e-4:
+                elif eff_row - row_start > epsilon:
                     # interpolate on row but not column
                     p_row = eff_row - row_start
                     self.aim_x[h, v] += p_row * (self.x[row_start + 1, col_start] - self.x[row_start, col_start])
@@ -304,7 +309,7 @@ class FlatPlateReceiver(Receiver):
         self.surface_area = np.ones(self.x.size, dtype=float) * area_per_point
 
 
-    def build_measurement_points(self):
+    def build_measurement_points(self,method='halos'):
         """
         Builds Measurement Points (x,y,z) on the Receiver Surface
 
@@ -317,10 +322,20 @@ class FlatPlateReceiver(Receiver):
         self.shape_type = "flat_plate"
         self.build_zero_arrays()
         # This assume receiver normal is [0, 1, 0] i.e., points directly north
-        xs = (np.arange(self.params["pts_per_len_dim"], dtype=float) + 0.5) / (self.params["pts_per_len_dim"]) * \
-             self.params["length"] - self.params["length"] / 2
-        zs = (np.arange(self.params["pts_per_ht_dim"], dtype=float) + 0.5) / (self.params["pts_per_ht_dim"]) * \
-             self.params["height"] - self.params["height"] / 2 + self.tow_height
+        # method = method.lower()
+        # assert method in ['original','linspace','solarpilot'], "Method must be one of the following: original, linspace, solarpilot"
+        
+        # define measurement points
+        L,H = self.params["length"],self.params['height']
+        Nx,Nz = self.params['pts_per_len_dim'],self.params['pts_per_ht_dim']
+        if method=='solarpilot': # reverse-engineered solarpilot gridding from csv files (as of version 1.5.2)
+            top, left, x_step, z_step = H-0.5,-L/2, L/Nx, H/Nz 
+            xs = left + np.arange(Nx)*x_step
+            zs = top - np.arange(Nz)*z_step - H/2 + self.tow_height
+        elif method=='halos':
+            xs = (np.arange(Nx, dtype=float) + 0.5) / Nx * L - L / 2
+            zs = (np.arange(Nz, dtype=float) + 0.5) / Nz * H - H / 2 + self.tow_height
+        
         self.x += xs
 
         self.z = self.z.transpose()

@@ -286,9 +286,14 @@ class SP_Flux(SolarPilot):
     def set_helio_aimpoints(self,aimpoints:list[list]):
         nan = float('nan')
         for ii,h in enumerate(self.helio_data):
-            self.helio_data[ii] = [h[0],h[1],h[2],h[3],
-                                   nan,nan,nan,nan,nan,
-                                   aimpoints[ii][0],aimpoints[ii][1],aimpoints[ii][2]]
+            if len(aimpoints[ii])==0:
+                self.helio_data[ii] = [h[0],h[1],h[2],h[3],
+                                        nan,nan,nan,nan,nan,
+                                        0, 0,1e6]
+            else:
+                self.helio_data[ii] = [h[0],h[1],h[2],h[3],
+                                    nan,nan,nan,nan,nan,
+                                    aimpoints[ii][0],aimpoints[ii][1],aimpoints[ii][2]]
 
     def get_single_helio_flux(self, helio_index, weather_data = None, 
                               hour_id = None, dni = None, soiling:list = None):
@@ -307,7 +312,7 @@ class SP_Flux(SolarPilot):
             helio_dict['soiling'][helio_index] = soiling[helio_index]
 
         assert cp.modify_heliostats(self.r, helio_dict)
-        assert cp.simulate(self.r)
+        assert cp.simulate(self.r,update_aimpoints=False)
         flux = cp.get_fluxmap(self.r) 
         cp.data_free(self.r) 
 
@@ -364,7 +369,7 @@ class SP_Flux(SolarPilot):
     def get_full_field_flux(self, weather_data = None, case_name = None, hour_id = None, dni = None, 
                             not_filter_helio = True, aimpoint_method = None, aimpoints:list[list] = None,
                             soiling:list = None, use_soltrace = False,
-                            max_rays=None,min_rays=None):
+                            max_rays=None, min_rays=None, nthreads=None):
         """
         Returns full field flux map
         
@@ -433,7 +438,10 @@ class SP_Flux(SolarPilot):
         
         assert cp.modify_heliostats(self.r, helio_dict)
 
-        cp.simulate(self.r, nthreads = 8)                                                             
+        if nthreads is None:
+            nthreads = os.cpu_count()
+
+        cp.simulate(self.r, nthreads = nthreads, update_aimpoints=False)                                                             
         flux = cp.get_fluxmap(self.r)                                                
         field = cp.get_layout_info(self.r)  
         num_defocus = self.num_heliostats - len(field) - 1
@@ -511,7 +519,7 @@ class SP_Flux(SolarPilot):
         return flux_before_defocus, flux_after_defocus, defocused_helios       
     
     def run_sp_case(self, weather_data = None, case_name = None, hour_id = None, dni = None, 
-                    sp_aimpoint_heur = False, saveCSV = True,ouput_folder = "./../outputs/",
+                    sp_aimpoint_heur = False, saveCSV = True,output_folder = "./../outputs/",
                     aimpoints = None, soiling = None, aimpoint_method = None,
                     use_soltrace=False,max_rays=None,min_rays=None):
         """
@@ -568,7 +576,7 @@ class SP_Flux(SolarPilot):
             results["post_num_defocus"] = defocused_helios
         if saveCSV:
             results_filename = "SolarPilot_" + case_name +"_summary.csv"
-            with open(ouput_folder+results_filename, "w") as f:  
+            with open(output_folder+results_filename, "w") as f:  
                 w = csv.DictWriter(f, results.keys())
                 w.writeheader()
                 w.writerow(results) 

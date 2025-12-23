@@ -352,8 +352,16 @@ class FluxModel(object):
             center_idx = len(self.receiver.aimpoints) // 2
             map_center = self.parallel_flux_maps[helio_idx]
             aim_cols = int(self.receiver.params["aim_cols"])
-            x_shift_size = round(len(map_center)/aim_cols)
-            y_shift_size = round(len(map_center)/aim_rows)
+
+            N = len(map_center)
+            h_margin = self.receiver.params['aim_h_margin']
+            v_margin = self.receiver.params['aim_v_margin']
+            x_shift_size = round((N-1-2*h_margin)/(aim_cols-1))
+            y_shift_size = round((N-1-2*v_margin)/(aim_rows-1))
+
+            # # old method
+            # x_shift_size = round(len(map_center)/aim_cols)
+            # y_shift_size = round(len(map_center)/aim_rows)
         map_center = numpy.array(map_center)   
         center_map = map_center.flatten()
         if not (self.use_sp_flux or self.read_flux_from_file):
