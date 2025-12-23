@@ -565,7 +565,7 @@ class SP_Flux(SolarPilot):
         results["num_defocus"] = num_defocus
         results["num_heliostats"] = num_heliostats
         results["max_flux"] = max_flux
-        results["obj_value"] = obj_value
+        results["power"] = obj_value
         if sp_aimpoint_heur:
             print("HALOS & SP Done! - SP Aimpoint Heuristic Started.......")
             before_flux, after_flux, defocused_helios = self.sp_aimpoint_defocus(weather_data = weather_data, hour_id = hour_id, dni = dni)

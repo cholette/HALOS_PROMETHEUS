@@ -13,5 +13,4 @@ tmp/
 data/
 notes/
 inputs/
-code/*__pycache__*
 *.pkl
