@@ -12,14 +12,15 @@ case_name = "flat_daggett_50"
 filenames = inputs.readCaseFile(case_filename)
 settings = inputs.readSettingsFile(filenames["settings"])
 
-# desired_aimpoints = [[7.0,0.0,4.0],[-7.0,0.0,-4.0],[0.0,0.0,4.0],[0.0,0.0,-4.0],
-#                      [7.0,0.0,-4.0],[-7.0,0.0,4.0]]
-desired_aimpoints = [[0.0,0.0,0.0]]
+desired_aimpoints = [[7.0,0.0,4.0],[-7.0,0.0,-4.0],[0.0,0.0,4.0],[0.0,0.0,-4.0],
+                     [7.0,0.0,-4.0],[-7.0,0.0,4.0]]
+# desired_aimpoints = [[7.0,0.0,2.0],[-7.0,0.0,-2.0]]
 probs = [1/len(desired_aimpoints)]*len(desired_aimpoints)
 save_aimpoint = True # Only makes sense for a single aimpoint
+np_seed = 42
 
 pts = [5,7,10,13,15,19,20,25,30,31,35,37,40,43,45,49,50,73,75,90,91,100,103]
-# pts = [33]
+# pts = [13,15]
 aim_h_margin,aim_v_margin = 0,0
 
 results = {'pts_per_dim':[],
@@ -63,8 +64,9 @@ if __name__ == "__main__":
         
         aimpoint = []
         aimpoint_idx = []
+        rng = np.random.default_rng(seed=np_seed)
         for ii in range(N):
-            idx = np.random.choice(len(desired_aim),p=probs)
+            idx = rng.choice(len(desired_aim),p=probs)
             idx = desired_idxs[idx]
             aimpoint_idx.append(idx)
             aimpoint.append(aimpoint_grid[idx,:])
