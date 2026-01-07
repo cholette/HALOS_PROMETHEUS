@@ -54,13 +54,26 @@ class gurobi_model:
         print('Adding objective')
         model.setObjective(quicksum(S[m]*x[m] for m in range(M)),GRB.MAXIMIZE)
 
-        print(f'Adding flux constraints {flux_constraint}')
+        print(f'Adding flux constraints ({flux_constraint})')
         if flux_constraint == 'measurements':
             model.addConstrs((x[m] == quicksum((C[h,a,m]*y[h,a] for h in range(N) 
                                                 for a in range(N_aim))) for m in range(M)),name='Flux Calculation')
             model.addConstrs((x[m]<=params['max_flux'] for m in range(M)),name='Flux Constraint')
+        
         elif flux_constraint == 'aimpoints':
-            raise ValueError("Not implemented yet")
+            # find the nearest measurement points to each aim point
+            measurement_points = flux_model.receiver.coords
+            aim_points = flux_model.receiver.aimpoints
+            M_aim = []
+            for a in range(N_aim):
+                Δ = aim_points[a,:] - measurement_points
+                d2 = np.sum(Δ**2,axis=1)
+                idx = np.argmin(d2)
+                M_aim.append(idx)
+
+            model.addConstrs((x[m] == quicksum((C[h,a,m]*y[h,a] for h in range(N) 
+                                                for a in range(N_aim))) for m in range(M)),name='Flux Calculation')
+            model.addConstrs((x[m]<=params['max_flux'] for m in M_aim),name='Flux Constraint')
 
         # print('Adding flux slope constraints')
         # model.addConstrs((x[m]-x[n]<=params['max_dflux'] for m in range(M)

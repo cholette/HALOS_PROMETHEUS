@@ -66,7 +66,8 @@ def compare_flux_maps(flux,benchmark,surface_area=None):
 
     return [rmse_sp,mad_sp,max_sp,pw_hal,pw_sp,pk_hal,pk_sp]
 
-def update_pts(file,pts_per_dim,aim_h_margin,aim_v_margin):
+def update_pts(file,pts_per_dim, aim_rows, aim_cols,
+               aim_h_margin, aim_v_margin):
     
     with open(file, "r") as f:
         lines = f.readlines()
@@ -79,5 +80,9 @@ def update_pts(file,pts_per_dim,aim_h_margin,aim_v_margin):
                 f.write(f"aim_h_margin,{aim_h_margin:d}\n")
             elif "aim_v_margin" in line:
                 f.write(f"aim_v_margin,{aim_v_margin:d}\n")
+            elif "aim_rows" in line:
+                f.write(f"aim_rows,{aim_rows:d}\n")
+            elif "aim_cols" in line:
+                f.write(f"aim_cols,{aim_cols:d}\n")
             else:
                 f.write(line)
