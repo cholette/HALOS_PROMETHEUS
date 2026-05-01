@@ -353,6 +353,10 @@ class FluxModel(object):
             map_center = self.parallel_flux_maps[helio_idx]
             aim_cols = int(self.receiver.params["aim_cols"])
 
+            # number of aimpoints needs to be odd for this shifting
+            assert aim_rows%2 > 0, "aim_rows must be odd for current implementation of HALOS shifting."
+            assert aim_cols%2 > 0, "aim_rows must be odd for current implementation of HALOS shifting."
+
             N = len(map_center)
             h_margin = self.receiver.params['aim_h_margin']
             v_margin = self.receiver.params['aim_v_margin']

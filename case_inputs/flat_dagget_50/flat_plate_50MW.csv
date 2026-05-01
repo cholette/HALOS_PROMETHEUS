@@ -2,7 +2,7 @@ length,21.6
 tow_height,106.5
 height,12
 diameter,10.38
-pts_per_dim,100
+pts_per_dim,330
 zenith_deg,90
 azimuth_deg,180
 rec_cent_offset_x,0
@@ -10,8 +10,8 @@ rec_cent_offset_y,0
 rec_cent_offset_z,0
 aim_rows,7
 aim_cols,7
-aim_h_margin,0
-aim_v_margin,0
+aim_h_margin,1
+aim_v_margin,1
 power_rating,5.00E+07
 receiver_type,Flat plate
 field_dni,950
